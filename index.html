@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Interactive COVID-19 Choropleth Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; color: #20242a; background: #f5f7fa; }
+    header { padding: 18px 22px; background: #172b4d; color: white; }
+    header h1 { margin: 0 0 6px; font-size: 22px; }
+    header p { margin: 0; font-size: 14px; color: #dce6f5; }
+    #map { height: 72vh; min-height: 420px; width: 100%; }
+    .note { padding: 12px 18px; font-size: 13px; line-height: 1.45; background: #fff7df; border-top: 1px solid #f0dfad; }
+    .legend { line-height: 18px; color: #333; background: white; padding: 10px 12px;
+               border-radius: 5px; box-shadow: 0 1px 6px #0003; }
+    .legend i { width: 18px; height: 14px; float: left; margin-right: 8px; opacity: .9; }
+    .leaflet-popup-content { line-height: 1.6; }
+    footer { padding: 10px 18px; color: #5c6570; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>COVID-19 Cases by Region</h1>
+    <p>Interactive choropleth map · Sample dataset</p>
+  </header>
+  <div id="map" role="application" aria-label="Interactive map showing sample COVID-19 cases by region"></div>
+  <div class="note">
+    <strong>Data note:</strong> This file uses the assignment's sample counts (North 25, South 40, East 15)
+    and illustrative polygon boundaries so the map can be previewed. Replace these example geometries
+    with the real GeoJSON boundary file before treating the map as a geographic representation.
+  </div>
+  <footer>Join key: <code>Region_ID</code> · GeoJSON property: <code>Region_ID</code> · Value: <code>COVID_Cases</code></footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    const covidRows = [
+      {Region_ID: 101, Region_Name: "North", COVID_Cases: 25},
+      {Region_ID: 102, Region_Name: "South", COVID_Cases: 40},
+      {Region_ID: 103, Region_Name: "East", COVID_Cases: 15}
+    ];
+
+    // Confirmed data join: COVID.Region_ID === GeoJSON.properties.Region_ID
+    const casesByRegion = new Map(covidRows.map(row => [String(row.Region_ID), row]));
+    const boundaries = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"Region_ID": 101, "Region_Name": "North"}, "geometry": {"type": "Polygon", "coordinates": [[[78.0, 14.2], [78.18, 14.2], [78.18, 14.38], [78.0, 14.38], [78.0, 14.2]]]}}, {"type": "Feature", "properties": {"Region_ID": 102, "Region_Name": "South"}, "geometry": {"type": "Polygon", "coordinates": [[[78.0, 13.98], [78.18, 13.98], [78.18, 14.16], [78.0, 14.16], [78.0, 13.98]]]}}, {"type": "Feature", "properties": {"Region_ID": 103, "Region_Name": "East"}, "geometry": {"type": "Polygon", "coordinates": [[[78.2, 14.09], [78.38, 14.09], [78.38, 14.27], [78.2, 14.27], [78.2, 14.09]]]}}]};
+
+    boundaries.features.forEach(feature => {
+      const key = String(feature.properties.Region_ID);
+      const row = casesByRegion.get(key);
+      feature.properties.COVID_Cases = row ? row.COVID_Cases : null;
+      feature.properties.Region_Name = row ? row.Region_Name : feature.properties.Region_Name;
+    });
+
+    const values = covidRows.map(row => row.COVID_Cases);
+    function colorFor(value) {
+      if (value === null || value === undefined) return "#bdbdbd";
+      if (value <= 15) return "#fee5d9";
+      if (value <= 25) return "#fcae91";
+      if (value <= 35) return "#fb6a4a";
+      return "#cb181d";
+    }
+    function style(feature) {
+      return {
+        fillColor: colorFor(feature.properties.COVID_Cases),
+        weight: 2, opacity: 1, color: "#ffffff",
+        dashArray: "3", fillOpacity: 0.78
+      };
+    }
+
+    const map = L.map("map").setView([14.18, 78.19], 11);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    function onEachFeature(feature, layer) {
+      const p = feature.properties;
+      layer.bindPopup(
+        `<strong>${p.Region_Name}</strong><br>Region ID: ${p.Region_ID}<br>` +
+        `COVID cases: <strong>${p.COVID_Cases ?? "No matching data"}</strong>`
+      );
+      layer.bindTooltip(`${p.Region_Name}: ${p.COVID_Cases} cases`, {sticky: true});
+      layer.on({
+        mouseover: e => e.target.setStyle({weight: 4, color: "#222", fillOpacity: 0.92}),
+        mouseout: e => geoLayer.resetStyle(e.target)
+      });
+    }
+    const geoLayer = L.geoJSON(boundaries, {style, onEachFeature}).addTo(map);
+    map.fitBounds(geoLayer.getBounds(), {padding: [20, 20]});
+
+    const legend = L.control({position: "bottomright"});
+    legend.onAdd = function () {
+      const div = L.DomUtil.create("div", "legend");
+      const grades = [0, 15, 25, 35];
+      const labels = ["0–15 cases", "16–25 cases", "26–35 cases", "36+ cases"];
+      div.innerHTML = "<strong>COVID cases</strong><br>";
+      grades.forEach((grade, i) => {
+        div.innerHTML += `<i style="background:${colorFor(grade)}"></i>${labels[i]}<br>`;
+      });
+      return div;
+    };
+    legend.addTo(map);
+  </script>
+</body>
+</html>
